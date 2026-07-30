@@ -5,7 +5,7 @@
 
 use agent_base::TurnContext;
 use serde_json::Value;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -35,12 +35,31 @@ pub struct ObserverHandle {
     pub session: Arc<RwLock<SessionMetrics>>,
     /// Handle to the observer task. None after `shutdown()` has been called.
     task: Option<JoinHandle<()>>,
+    /// Pending turn-level custom data. Set by the consumer (e.g. phi-bard)
+    /// via `on_turn_end`, consumed by the observer task when building TurnMetrics.
+    pending_turn_custom: Arc<Mutex<Option<Value>>>,
 }
 
 impl ObserverHandle {
     /// Send session-level custom data to the observer.
     pub fn set_session_custom(&self, custom: Value) {
         let _ = self.tx.send(ObserverMsg::SetSessionCustom(custom));
+    }
+
+    /// Set turn-level custom data for the NEXT turn that the observer processes.
+    ///
+    /// Call this from an `on_turn_end` callback. The custom value will be
+    /// merged into that turn's `custom` field in `TurnMetrics`.
+    ///
+    /// ```ignore
+    /// agent.runtime().on_turn_end(move |_ctx| {
+    ///     handle.set_turn_custom(json!({"check_quality_passed": true}));
+    /// });
+    /// ```
+    pub fn set_turn_custom(&self, custom: Value) {
+        if let Ok(mut pending) = self.pending_turn_custom.lock() {
+            *pending = Some(custom);
+        }
     }
 
     /// Shut down the observer gracefully and wait for all pending metrics
@@ -84,6 +103,8 @@ pub fn init_telemetry(
     let session = Arc::new(RwLock::new(SessionMetrics::new(session_id, node_id, model)));
 
     let observer_session = session.clone();
+    let pending_turn_custom = Arc::new(Mutex::new(None::<Value>));
+    let pending = pending_turn_custom.clone();
 
     // Independent task: build metrics from TurnContext
     let task = tokio::spawn(async move {
@@ -91,7 +112,22 @@ pub fn init_telemetry(
         while let Some(msg) = rx.recv().await {
             match msg {
                 ObserverMsg::TurnEnd(ctx) => {
-                    let turn = build_turn_metrics(&ctx);
+                    let turn = {
+                        let mut turn = build_turn_metrics(&ctx);
+                        // Apply any pending turn-level custom data
+                        if let Ok(mut pending) = pending.lock() {
+                            if let Some(custom) = pending.take() {
+                                if let Value::Object(ref mut map) = turn.custom {
+                                    if let Value::Object(custom_map) = custom {
+                                        for (k, v) in custom_map {
+                                            map.insert(k, v);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        turn
+                    };
                     let mut session = accumulator.write().await;
                     session.append_turn(turn);
                     tracing::debug!(turn = session.total_turns, "metrics: turn accumulated");
@@ -118,6 +154,7 @@ pub fn init_telemetry(
         tx,
         session,
         task: Some(task),
+        pending_turn_custom,
     }
 }
 
