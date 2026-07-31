@@ -141,6 +141,10 @@ pub struct SessionMetrics {
     pub total_output_tokens: u64,
     pub estimated_cost: f64,
 
+    // Characters (always available, even without API token support)
+    #[serde(default)]
+    pub total_chars: u64,
+
     // Tool summary
     pub total_tool_calls: u32,
     pub tool_breakdown: HashMap<String, u32>,
@@ -198,6 +202,7 @@ impl SessionMetrics {
             total_input_tokens: 0,
             total_output_tokens: 0,
             estimated_cost: 0.0,
+            total_chars: 0,
             total_tool_calls: 0,
             tool_breakdown: HashMap::new(),
             tool_fail_rate: 0.0,
@@ -226,6 +231,7 @@ impl SessionMetrics {
         self.total_turns += 1;
         self.total_input_tokens += turn.input_tokens;
         self.total_output_tokens += turn.output_tokens;
+        self.total_chars += turn.text_length;
         self.total_duration_ms += turn.duration_ms;
         self.total_llm_ms += turn.llm_duration_ms;
         self.total_tool_ms += turn.tool_duration_ms;
@@ -313,8 +319,7 @@ pub struct SessionSummary {
     pub created_at: String,
     pub model: String,
     pub total_turns: u32,
-    pub total_tokens: u64,
-    pub estimated_cost: f64,
+    pub total_chars: u64,
     pub outcome: SessionOutcome,
     /// Product name from custom field, if set (e.g. "phi-bard").
     pub product: Option<String>,
@@ -537,6 +542,7 @@ mod tests {
             "total_input_tokens": 0,
             "total_output_tokens": 0,
             "estimated_cost": 0.0,
+            "total_chars": 0,
             "total_tool_calls": 0,
             "tool_breakdown": {},
             "tool_fail_rate": 0.0,

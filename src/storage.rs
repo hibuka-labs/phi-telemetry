@@ -63,8 +63,7 @@ pub fn list_all_metrics(base_dir: &Path) -> Result<Vec<SessionSummary>> {
                 created_at: metrics.created_at,
                 model: metrics.model,
                 total_turns: metrics.total_turns,
-                total_tokens: metrics.total_input_tokens + metrics.total_output_tokens,
-                estimated_cost: metrics.estimated_cost,
+                total_chars: metrics.total_chars,
                 outcome: metrics.outcome,
                 product,
             });
