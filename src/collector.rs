@@ -115,15 +115,13 @@ pub fn init_telemetry(
                     let turn = {
                         let mut turn = build_turn_metrics(&ctx);
                         // Apply any pending turn-level custom data
-                        if let Ok(mut pending) = pending.lock() {
-                            if let Some(custom) = pending.take() {
-                                if let Value::Object(ref mut map) = turn.custom {
-                                    if let Value::Object(custom_map) = custom {
-                                        for (k, v) in custom_map {
-                                            map.insert(k, v);
-                                        }
-                                    }
-                                }
+                        if let Ok(mut pending) = pending.lock()
+                            && let Some(custom) = pending.take()
+                            && let Value::Object(ref mut map) = turn.custom
+                            && let Value::Object(custom_map) = custom
+                        {
+                            for (k, v) in custom_map {
+                                map.insert(k, v);
                             }
                         }
                         turn
