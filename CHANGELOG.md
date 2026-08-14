@@ -2,6 +2,12 @@
 
 All notable changes to phi-telemetry.
 
+## [0.2.0] — 2026-08-14
+
+### Changed
+
+- Bump `agent-base` to 0.2.0 (Tool API v2). Minimal migration — telemetry types are unaffected; `TurnContext` / `AgentRuntime` / `RunOutcome` remain.
+
 ## [0.1.0] — 2026-07-30
 
 Initial release.
