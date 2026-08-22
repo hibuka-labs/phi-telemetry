@@ -1,5 +1,7 @@
 # phi-telemetry
 
+[![codecov](https://codecov.io/gh/hibuka-labs/phi-telemetry/branch/master/graph/badge.svg)](https://codecov.io/gh/hibuka-labs/phi-telemetry)
+
 Observability layer for [phi-agent](https://github.com/hibuka-labs/phi-agent) — collects and persists structured session metrics without touching the agent runtime hot path.
 
 ## How it works
