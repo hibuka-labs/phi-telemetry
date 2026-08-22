@@ -363,6 +363,9 @@ pub fn run_outcome_to_turn_outcome(
                 TurnOutcome::ToolCalls
             }
         }
+        // Continuing means the guard nudged — treat as a completed turn
+        // (the run will loop, but this turn is done).
+        agent_base::RunOutcome::Continuing => TurnOutcome::Completed,
         agent_base::RunOutcome::Failed { .. } => TurnOutcome::Error,
         agent_base::RunOutcome::Cancelled => TurnOutcome::Cancelled,
         agent_base::RunOutcome::MaxTurnsExceeded { .. } => TurnOutcome::MaxTurns,
@@ -373,6 +376,7 @@ pub fn run_outcome_to_turn_outcome(
 pub fn run_outcome_to_session_outcome(outcome: &agent_base::RunOutcome) -> SessionOutcome {
     match outcome {
         agent_base::RunOutcome::Completed => SessionOutcome::Completed,
+        agent_base::RunOutcome::Continuing => SessionOutcome::Completed,
         agent_base::RunOutcome::Failed { .. } => SessionOutcome::Failed,
         agent_base::RunOutcome::Cancelled => SessionOutcome::Cancelled,
         agent_base::RunOutcome::MaxTurnsExceeded { .. } => SessionOutcome::MaxTurns,
