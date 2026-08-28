@@ -168,6 +168,11 @@ pub(crate) fn build_turn_metrics(ctx: &TurnContext) -> TurnMetrics {
         .as_ref()
         .and_then(|u| u.completion_tokens)
         .unwrap_or(0) as u64;
+    let thinking_tokens = ctx
+        .usage
+        .as_ref()
+        .and_then(|u| u.reasoning_tokens)
+        .unwrap_or(0) as u64;
 
     let duration_ms = ctx.duration_ms;
 
@@ -187,6 +192,7 @@ pub(crate) fn build_turn_metrics(ctx: &TurnContext) -> TurnMetrics {
     turn.tool_duration_ms = ctx.tool_duration_ms;
     turn.input_tokens = input_tokens;
     turn.output_tokens = output_tokens;
+    turn.thinking_tokens = thinking_tokens;
     turn.tool_call_count = ctx.tool_call_count;
     turn.tools_used = ctx.tools_used.clone();
     turn.tool_success = ctx.tool_success;
@@ -207,40 +213,51 @@ pub(crate) fn build_turn_metrics(ctx: &TurnContext) -> TurnMetrics {
 mod tests {
     use super::*;
     use crate::types::TurnOutcome;
-    use agent_base::llm::{LlmCapabilities, StreamChunk, UsageInfo};
-    use agent_base::types::{ChatMessage, ResponseFormat};
-    use agent_base::{AgentBuilder, RunOutcome, StreamClient};
+    use agent_base::llm::{Capabilities, UsageInfo};
+    use agent_base::llm_trait::{LlmError, ProviderInfo};
+    use agent_base::{AgentBuilder, RunOutcome};
     use async_trait::async_trait;
     use serde_json::json;
-    use std::pin::Pin;
     use std::sync::Arc;
 
-    // ── Stub StreamClient for creating AgentRuntime ──
+    // ── Stub LlmProvider for creating AgentRuntime ──
 
-    struct StubClient;
+    struct StubProvider;
 
     #[async_trait]
-    impl StreamClient for StubClient {
+    impl agent_base::llm::LlmProvider for StubProvider {
         async fn stream(
             &self,
-            _messages: &[ChatMessage],
-            _tools: &[serde_json::Value],
-            _reasoning: Option<&agent_base::llm::ReasoningConfig>,
-            _response_format: Option<&ResponseFormat>,
-        ) -> agent_base::AgentResult<
-            Pin<Box<dyn futures_core::Stream<Item = agent_base::AgentResult<StreamChunk>> + Send>>,
-        > {
-            Ok(Box::pin(futures_util::stream::empty()))
+            _request: agent_base::llm::ChatRequest,
+        ) -> Result<agent_base::llm::ChatStream, LlmError> {
+            Ok(agent_base::llm::ChatStream::new(Box::pin(
+                futures_util::stream::empty(),
+            )))
         }
 
-        fn capabilities(&self) -> LlmCapabilities {
-            LlmCapabilities::default()
+        async fn chat(
+            &self,
+            _request: agent_base::llm::ChatRequest,
+        ) -> Result<agent_base::llm::ChatResponse, LlmError> {
+            Err(LlmError::llm("stub"))
+        }
+
+        fn capabilities(&self) -> Capabilities {
+            Capabilities::default()
+        }
+
+        fn info(&self) -> ProviderInfo {
+            ProviderInfo {
+                name: "stub".to_string(),
+                model: "stub-model".to_string(),
+                version: None,
+            }
         }
     }
 
     /// Helper: create an AgentRuntime for testing.
     fn test_runtime() -> agent_base::AgentRuntime {
-        AgentBuilder::new(Arc::new(StubClient)).build().unwrap()
+        AgentBuilder::new(Arc::new(StubProvider)).build().unwrap()
     }
 
     /// Helper: build a TurnContext with sensible defaults.
@@ -256,6 +273,7 @@ mod tests {
                 prompt_tokens: Some(500),
                 completion_tokens: Some(300),
                 total_tokens: Some(800),
+                reasoning_tokens: None,
             }),
             full_text_len: 1024,
             has_thinking: false,
@@ -364,6 +382,7 @@ mod tests {
             prompt_tokens: Some(100),
             completion_tokens: None,
             total_tokens: None,
+            reasoning_tokens: None,
         });
         let turn = build_turn_metrics(&ctx);
         assert_eq!(turn.input_tokens, 100);

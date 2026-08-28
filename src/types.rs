@@ -58,6 +58,8 @@ pub struct TurnMetrics {
     pub llm_calls: u32,
     pub input_tokens: u64,
     pub output_tokens: u64,
+    #[serde(default)]
+    pub thinking_tokens: u64,
     pub model: String,
 
     // Tool
@@ -106,6 +108,7 @@ impl TurnMetrics {
             llm_calls: 1,
             input_tokens: 0,
             output_tokens: 0,
+            thinking_tokens: 0,
             model,
             tool_call_count: 0,
             tools_used: Vec::new(),
@@ -139,6 +142,8 @@ pub struct SessionMetrics {
     pub model: String,
     pub total_input_tokens: u64,
     pub total_output_tokens: u64,
+    #[serde(default)]
+    pub total_thinking_tokens: u64,
     pub estimated_cost: f64,
 
     // Characters (always available, even without API token support)
@@ -201,6 +206,7 @@ impl SessionMetrics {
             model,
             total_input_tokens: 0,
             total_output_tokens: 0,
+            total_thinking_tokens: 0,
             estimated_cost: 0.0,
             total_chars: 0,
             total_tool_calls: 0,
@@ -231,6 +237,7 @@ impl SessionMetrics {
         self.total_turns += 1;
         self.total_input_tokens += turn.input_tokens;
         self.total_output_tokens += turn.output_tokens;
+        self.total_thinking_tokens += turn.thinking_tokens;
         self.total_chars += turn.text_length;
         self.total_duration_ms += turn.duration_ms;
         self.total_llm_ms += turn.llm_duration_ms;
@@ -444,6 +451,7 @@ mod tests {
             llm_calls: 1,
             input_tokens: 500,
             output_tokens: 300,
+            thinking_tokens: 0,
             model: "claude-sonnet".to_string(),
             tool_call_count: 1,
             tools_used: vec!["shell".to_string()],
@@ -488,6 +496,7 @@ mod tests {
                 llm_calls: 1,
                 input_tokens: 500,
                 output_tokens: 300,
+                thinking_tokens: 0,
                 model: "claude-sonnet".to_string(),
                 tool_call_count: 1,
                 tools_used: vec!["shell".to_string()],
