@@ -60,6 +60,10 @@ pub struct TurnMetrics {
     pub output_tokens: u64,
     #[serde(default)]
     pub thinking_tokens: u64,
+    /// Byte length of reasoning/thinking content (always available, even when
+    /// the provider does not report reasoning token counts).
+    #[serde(default)]
+    pub thinking_bytes: u64,
     pub model: String,
 
     // Tool
@@ -109,6 +113,7 @@ impl TurnMetrics {
             input_tokens: 0,
             output_tokens: 0,
             thinking_tokens: 0,
+            thinking_bytes: 0,
             model,
             tool_call_count: 0,
             tools_used: Vec::new(),
@@ -144,6 +149,9 @@ pub struct SessionMetrics {
     pub total_output_tokens: u64,
     #[serde(default)]
     pub total_thinking_tokens: u64,
+    /// Total byte length of reasoning/thinking content across all turns.
+    #[serde(default)]
+    pub total_thinking_bytes: u64,
     pub estimated_cost: f64,
 
     // Characters (always available, even without API token support)
@@ -207,6 +215,7 @@ impl SessionMetrics {
             total_input_tokens: 0,
             total_output_tokens: 0,
             total_thinking_tokens: 0,
+            total_thinking_bytes: 0,
             estimated_cost: 0.0,
             total_chars: 0,
             total_tool_calls: 0,
@@ -238,6 +247,7 @@ impl SessionMetrics {
         self.total_input_tokens += turn.input_tokens;
         self.total_output_tokens += turn.output_tokens;
         self.total_thinking_tokens += turn.thinking_tokens;
+        self.total_thinking_bytes += turn.thinking_bytes;
         self.total_chars += turn.text_length;
         self.total_duration_ms += turn.duration_ms;
         self.total_llm_ms += turn.llm_duration_ms;
@@ -452,6 +462,7 @@ mod tests {
             input_tokens: 500,
             output_tokens: 300,
             thinking_tokens: 0,
+            thinking_bytes: 0,
             model: "claude-sonnet".to_string(),
             tool_call_count: 1,
             tools_used: vec!["shell".to_string()],
@@ -497,6 +508,7 @@ mod tests {
                 input_tokens: 500,
                 output_tokens: 300,
                 thinking_tokens: 0,
+                thinking_bytes: 0,
                 model: "claude-sonnet".to_string(),
                 tool_call_count: 1,
                 tools_used: vec!["shell".to_string()],
@@ -517,6 +529,126 @@ mod tests {
         assert_eq!(m.total_duration_ms, 15000);
         assert_eq!(m.avg_turn_ms, 3000);
         assert_eq!(m.p50_turn_ms, 3000);
+    }
+
+    #[test]
+    fn test_session_metrics_thinking_bytes_accumulation() {
+        let mut m = SessionMetrics::new(
+            "test".to_string(),
+            "".to_string(),
+            "mimo-v2.5-pro".to_string(),
+        );
+
+        // Turn 1: has thinking content (43 bytes), provider reports 0 tokens
+        let turn1 = TurnMetrics {
+            turn_number: 1,
+            started_at: "2026-07-29T00:00:00Z".to_string(),
+            duration_ms: 1000,
+            time_to_first_token_ms: 200,
+            llm_duration_ms: 800,
+            tool_duration_ms: 0,
+            llm_calls: 1,
+            input_tokens: 5000,
+            output_tokens: 80,
+            thinking_tokens: 0,
+            thinking_bytes: 43,
+            model: "mimo-v2.5-pro".to_string(),
+            tool_call_count: 0,
+            tools_used: vec![],
+            tool_success: 0,
+            tool_failed: 0,
+            outcome: TurnOutcome::Completed,
+            text_length: 100,
+            error_message: None,
+            has_thinking: true,
+            plan_updates: 0,
+            approval_count: 0,
+            user_input: "test".to_string(),
+            custom: Value::Object(serde_json::Map::new()),
+        };
+        m.append_turn(turn1);
+
+        // Turn 2: more thinking content (86 bytes)
+        let turn2 = TurnMetrics {
+            turn_number: 2,
+            started_at: "2026-07-29T00:00:01Z".to_string(),
+            duration_ms: 1200,
+            time_to_first_token_ms: 150,
+            llm_duration_ms: 900,
+            tool_duration_ms: 0,
+            llm_calls: 1,
+            input_tokens: 7000,
+            output_tokens: 131,
+            thinking_tokens: 0,
+            thinking_bytes: 86,
+            model: "mimo-v2.5-pro".to_string(),
+            tool_call_count: 0,
+            tools_used: vec![],
+            tool_success: 0,
+            tool_failed: 0,
+            outcome: TurnOutcome::Completed,
+            text_length: 200,
+            error_message: None,
+            has_thinking: true,
+            plan_updates: 0,
+            approval_count: 0,
+            user_input: "test".to_string(),
+            custom: Value::Object(serde_json::Map::new()),
+        };
+        m.append_turn(turn2);
+
+        // thinking_tokens stays 0 (provider never reported), but bytes accumulate
+        assert_eq!(m.total_thinking_tokens, 0);
+        assert_eq!(m.total_thinking_bytes, 129); // 43 + 86
+        assert_eq!(m.total_turns, 2);
+    }
+
+    #[test]
+    fn test_turn_metrics_thinking_bytes_default() {
+        let turn = TurnMetrics::new(
+            1,
+            "2026-07-29T00:00:00Z".to_string(),
+            1000,
+            "mimo-v2.5-pro".to_string(),
+            "test".to_string(),
+            TurnOutcome::Completed,
+        );
+        assert_eq!(turn.thinking_bytes, 0);
+        assert_eq!(turn.thinking_tokens, 0);
+    }
+
+    #[test]
+    fn test_session_metrics_backward_compat_thinking_bytes() {
+        // Old JSON without thinking_bytes should deserialize with default 0
+        let old_json = r#"{
+            "session_id": "test",
+            "node_id": "",
+            "created_at": "2026-07-29T00:00:00Z",
+            "model": "mimo-v2.5-pro",
+            "total_input_tokens": 100,
+            "total_output_tokens": 50,
+            "total_thinking_tokens": 0,
+            "estimated_cost": 0.0,
+            "total_chars": 100,
+            "total_tool_calls": 0,
+            "tool_breakdown": {},
+            "tool_fail_rate": 0.0,
+            "total_duration_ms": 1000,
+            "total_llm_ms": 800,
+            "total_tool_ms": 0,
+            "total_turns": 1,
+            "avg_turn_ms": 1000,
+            "p50_turn_ms": 1000,
+            "p95_turn_ms": 1000,
+            "p99_turn_ms": 1000,
+            "outcome": "completed",
+            "error_count": 0,
+            "custom": {},
+            "turns": []
+        }"#;
+        let m: SessionMetrics = serde_json::from_str(old_json).unwrap();
+        assert_eq!(m.total_thinking_bytes, 0);
+        assert_eq!(m.total_thinking_tokens, 0);
     }
 
     #[test]

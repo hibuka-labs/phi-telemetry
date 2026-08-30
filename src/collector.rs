@@ -193,6 +193,7 @@ pub(crate) fn build_turn_metrics(ctx: &TurnContext) -> TurnMetrics {
     turn.input_tokens = input_tokens;
     turn.output_tokens = output_tokens;
     turn.thinking_tokens = thinking_tokens;
+    turn.thinking_bytes = ctx.thinking_bytes;
     turn.tool_call_count = ctx.tool_call_count;
     turn.tools_used = ctx.tools_used.clone();
     turn.tool_success = ctx.tool_success;
@@ -277,6 +278,7 @@ mod tests {
             }),
             full_text_len: 1024,
             has_thinking: false,
+            thinking_bytes: 0,
             tools_used,
             tool_call_count: 1,
             tool_success: 1,
@@ -403,6 +405,23 @@ mod tests {
         ctx.has_thinking = true;
         let turn = build_turn_metrics(&ctx);
         assert!(turn.has_thinking);
+    }
+
+    #[test]
+    fn build_turn_metrics_with_thinking_bytes() {
+        let mut ctx = make_ctx(1, RunOutcome::Completed, vec![]);
+        ctx.has_thinking = true;
+        ctx.thinking_bytes = 43;
+        let turn = build_turn_metrics(&ctx);
+        assert!(turn.has_thinking);
+        assert_eq!(turn.thinking_bytes, 43);
+    }
+
+    #[test]
+    fn build_turn_metrics_thinking_bytes_default_zero() {
+        let ctx = make_ctx(1, RunOutcome::Completed, vec![]);
+        let turn = build_turn_metrics(&ctx);
+        assert_eq!(turn.thinking_bytes, 0);
     }
 
     #[test]
