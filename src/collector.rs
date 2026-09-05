@@ -17,7 +17,9 @@ use crate::types::{SessionMetrics, TurnMetrics, run_outcome_to_turn_outcome};
 #[derive(Clone, Debug)]
 pub(crate) enum ObserverMsg {
     /// A turn has completed — build TurnMetrics and accumulate.
-    TurnEnd(TurnContext),
+    /// Boxed: TurnContext is large, and this enum crosses the channel on
+    /// every turn (clippy::large_enum_variant).
+    TurnEnd(Box<TurnContext>),
     /// Set session-level custom data.
     SetSessionCustom(Value),
     /// Shut down the observer and finalize metrics.
@@ -97,7 +99,7 @@ pub fn init_telemetry(
     // Hook: only sends a message — no heavy work on the hot path.
     let hook_tx = tx.clone();
     runtime.on_turn_end(move |ctx: &TurnContext| {
-        let _ = hook_tx.send(ObserverMsg::TurnEnd(ctx.clone()));
+        let _ = hook_tx.send(ObserverMsg::TurnEnd(Box::new(ctx.clone())));
     });
 
     let session = Arc::new(RwLock::new(SessionMetrics::new(session_id, node_id, model)));

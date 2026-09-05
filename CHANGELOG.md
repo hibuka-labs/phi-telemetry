@@ -2,6 +2,19 @@
 
 All notable changes to phi-telemetry.
 
+## [0.4.0] — 2026-09-06
+
+### Added
+
+- `thinking_bytes` / `total_thinking_bytes` on turn metrics — reasoning-token
+  byte accounting alongside the existing token counters.
+
+## [0.3.0] — 2026-08-29
+
+### Changed
+
+- Bump `agent-base` to 0.4.0.
+
 ## [0.2.0] — 2026-08-14
 
 ### Changed
