@@ -324,6 +324,61 @@ impl SessionMetrics {
         self.outcome = outcome;
         self.recompute_percentiles();
     }
+
+    /// Merge another accumulator's per-turn records into this one and rebuild
+    /// every session-level aggregate from the merged list.
+    ///
+    /// Turns are deduplicated on `(turn_number, started_at)`, so the union is
+    /// idempotent: re-saving the same turns from the same process changes
+    /// nothing, while turns recorded by another writer over the same session
+    /// (a TUI session switch, a new process resuming it) are folded in instead
+    /// of clobbering the history. Identity/custom fields and `outcome` keep
+    /// `self`'s values — the caller decides whose identity and final state win.
+    pub fn merge_turns(&mut self, other: &SessionMetrics) {
+        let known: std::collections::HashSet<(u32, String)> = self
+            .turns
+            .iter()
+            .map(|t| (t.turn_number, t.started_at.clone()))
+            .collect();
+        for t in &other.turns {
+            if known.contains(&(t.turn_number, t.started_at.clone())) {
+                continue;
+            }
+            self.turns.push(t.clone());
+        }
+        self.turns
+            .sort_by(|a, b| a.started_at.cmp(&b.started_at).then(a.turn_number.cmp(&b.turn_number)));
+        self.rebuild_aggregates();
+    }
+
+    /// Recompute all incremental aggregates from scratch by replaying
+    /// `append_turn` over the stored turns (every total it maintains is a
+    /// function of the turn list).
+    fn rebuild_aggregates(&mut self) {
+        self.total_input_tokens = 0;
+        self.total_output_tokens = 0;
+        self.total_thinking_tokens = 0;
+        self.total_thinking_bytes = 0;
+        self.total_chars = 0;
+        self.total_duration_ms = 0;
+        self.total_llm_ms = 0;
+        self.total_tool_ms = 0;
+        self.total_tool_calls = 0;
+        self.tool_breakdown.clear();
+        self.total_failed = 0;
+        self.tool_fail_rate = 0.0;
+        self.error_count = 0;
+        self.total_plan_updates = 0;
+        self.total_approvals = 0;
+        self.total_turns = 0;
+        self.avg_turn_ms = 0;
+        self.model = String::new();
+
+        let turns = std::mem::take(&mut self.turns);
+        for t in turns {
+            self.append_turn(t);
+        }
+    }
 }
 
 // ── Summary for CLI listing ──
@@ -426,6 +481,89 @@ mod tests {
     #[test]
     fn test_percentile_empty() {
         assert_eq!(percentile_from_sorted(&[], 50.0), 0);
+    }
+
+    /// Helper: one turn with the given number/timestamp/duration/model.
+    fn turn(n: u32, at: &str, dur: u64, model: &str) -> TurnMetrics {
+        let mut t = TurnMetrics::new(
+            n,
+            at.to_string(),
+            dur,
+            model.to_string(),
+            "input".to_string(),
+            TurnOutcome::Completed,
+        );
+        t.input_tokens = 100;
+        t.output_tokens = 10;
+        t
+    }
+
+    #[test]
+    fn merge_turns_unions_disjoint_writers_and_rebuilds_totals() {
+        let mut base = SessionMetrics::new("s".into(), "".into(), "m1".into());
+        base.append_turn(turn(1, "2026-08-01T12:00:00Z", 1000, "m1"));
+        // A second writer recorded two different turns (e.g. after a resume).
+        let mut other = SessionMetrics::new("s".into(), "".into(), "m2".into());
+        other.append_turn(turn(2, "2026-08-01T12:01:00Z", 2000, "m2"));
+        other.append_turn(turn(3, "2026-08-01T12:02:00Z", 3000, "m2"));
+
+        base.merge_turns(&other);
+
+        assert_eq!(base.total_turns, 3);
+        assert_eq!(base.turns.len(), 3);
+        // Turns are ordered by time regardless of which writer recorded them.
+        assert_eq!(
+            base.turns.iter().map(|t| t.turn_number).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        // Aggregates rebuilt over the union.
+        assert_eq!(base.total_input_tokens, 300);
+        assert_eq!(base.total_output_tokens, 30);
+        assert_eq!(base.total_duration_ms, 6000);
+        assert_eq!(base.avg_turn_ms, 2000);
+        // Model = most frequent across merged turns (2×m2 beats 1×m1).
+        assert_eq!(base.model, "m2");
+    }
+
+    #[test]
+    fn merge_turns_dedupes_on_turn_number_and_started_at() {
+        let mut base = SessionMetrics::new("s".into(), "".into(), "m1".into());
+        base.append_turn(turn(1, "2026-08-01T12:00:00Z", 1000, "m1"));
+        let before = base.clone();
+
+        // Re-merging the same turns (same process re-saving) must be a no-op.
+        base.merge_turns(&before);
+        assert_eq!(base.total_turns, 1);
+        assert_eq!(base.total_input_tokens, 100);
+
+        // Same turn_number but a different timestamp is a different turn —
+        // two processes can both record "turn 1" of the same session.
+        let mut fresh = SessionMetrics::new("s".into(), "".into(), "m1".into());
+        fresh.append_turn(turn(1, "2026-08-02T09:00:00Z", 500, "m1"));
+        base.merge_turns(&fresh);
+        assert_eq!(base.total_turns, 2);
+        assert_eq!(base.total_duration_ms, 1500);
+    }
+
+    #[test]
+    fn merge_turns_preserves_identity_and_outcome() {
+        let mut base = SessionMetrics::new("s-old".into(), "node-9".into(), "m1".into());
+        base.custom = serde_json::json!({"product": "phimint"});
+        base.outcome = SessionOutcome::Failed;
+        base.append_turn(turn(1, "2026-08-01T12:00:00Z", 1000, "m1"));
+
+        let mut other = SessionMetrics::new("s-new".into(), "node-x".into(), "m2".into());
+        other.outcome = SessionOutcome::Completed;
+        other.append_turn(turn(2, "2026-08-01T12:01:00Z", 2000, "m2"));
+
+        base.merge_turns(&other);
+
+        // Identity/custom/outcome keep `self`'s values — save_metrics grants
+        // the writer's outcome explicitly after merging.
+        assert_eq!(base.session_id, "s-old");
+        assert_eq!(base.node_id, "node-9");
+        assert_eq!(base.custom, serde_json::json!({"product": "phimint"}));
+        assert_eq!(base.outcome, SessionOutcome::Failed);
     }
 
     #[test]

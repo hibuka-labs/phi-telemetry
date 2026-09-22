@@ -10,12 +10,32 @@ use crate::types::{SessionMetrics, SessionSummary};
 const METRICS_FILE: &str = "session_metrics.json";
 
 /// Incrementally write session metrics to `session_metrics.json`.
-/// Overwrites the file on each call — safe for per-turn writes.
+///
+/// Merges with any existing file first: a second writer over the same session
+/// (TUI session switch, a new process resuming it) must extend the per-turn
+/// history rather than clobber it — a plain overwrite once erased a whole
+/// session's stats when a resume started a fresh accumulator over the same
+/// directory. Union is keyed on `(turn_number, started_at)`, so the per-turn
+/// saves from a single process stay idempotent.
 pub fn save_metrics(metrics: &SessionMetrics, session_dir: &Path) -> Result<()> {
     let path = session_dir.join(METRICS_FILE);
-    let json = serde_json::to_string_pretty(metrics)?;
+    let merged = match try_load_metrics(session_dir) {
+        Some(mut existing) => {
+            existing.merge_turns(metrics);
+            // The writer knows its own final state (e.g. `finalize` set
+            // Interrupted right before this save) — let it win.
+            existing.outcome = metrics.outcome.clone();
+            existing
+        }
+        None => metrics.clone(),
+    };
+    let json = serde_json::to_string_pretty(&merged)?;
     std::fs::write(&path, json)?;
-    tracing::debug!(path = %path.display(), turns = metrics.total_turns, "session_metrics saved");
+    tracing::debug!(
+        path = %path.display(),
+        turns = merged.total_turns,
+        "session_metrics saved"
+    );
     Ok(())
 }
 
@@ -135,18 +155,47 @@ mod tests {
     }
 
     #[test]
-    fn save_metrics_overwrites_existing() {
-        let dir = temp_dir("save_overwrite");
-        let m1 = sample_metrics("s1", "gpt-4o");
+    fn save_metrics_merges_instead_of_clobbering() {
+        let dir = temp_dir("save_merges");
+        // First writer records turn 1.
+        let mut m1 = sample_metrics("s1", "gpt-4o");
+        m1.outcome = SessionOutcome::Cancelled;
         save_metrics(&m1, &dir).unwrap();
 
-        let mut m2 = sample_metrics("s2", "claude-sonnet");
-        m2.total_turns = 5;
+        // A second writer (fresh accumulator, e.g. a resume) records turn 2
+        // over the same directory. Its own outcome is the default Completed.
+        let mut m2 = SessionMetrics::new(
+            "s1".to_string(),
+            "node-1".to_string(),
+            "claude-sonnet".to_string(),
+        );
+        let turn2 = TurnMetrics::new(
+            2,
+            "2026-08-01T12:01:00Z".to_string(),
+            2000,
+            "gpt-4o".to_string(),
+            "second input".to_string(),
+            TurnOutcome::Completed,
+        );
+        m2.append_turn(turn2);
         save_metrics(&m2, &dir).unwrap();
 
         let loaded = load_metrics(&dir).unwrap();
-        assert_eq!(loaded.session_id, "s2");
-        assert_eq!(loaded.total_turns, 5);
+        // Both writers' turns survive — nothing is erased.
+        assert_eq!(loaded.total_turns, 2);
+        assert_eq!(loaded.turns.len(), 2);
+        assert_eq!(loaded.turns[0].turn_number, 1);
+        assert_eq!(loaded.turns[1].turn_number, 2);
+        // Aggregates are rebuilt over the union.
+        assert_eq!(loaded.total_duration_ms, 3000);
+        // The last writer's outcome wins.
+        assert_eq!(loaded.outcome, SessionOutcome::Completed);
+
+        // Re-saving the same data is idempotent (per-turn saves from one
+        // process must not double-count).
+        save_metrics(&m2, &dir).unwrap();
+        let loaded = load_metrics(&dir).unwrap();
+        assert_eq!(loaded.total_turns, 2);
 
         let _ = fs::remove_dir_all(&dir);
     }
