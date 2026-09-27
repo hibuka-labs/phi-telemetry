@@ -346,8 +346,11 @@ impl SessionMetrics {
             }
             self.turns.push(t.clone());
         }
-        self.turns
-            .sort_by(|a, b| a.started_at.cmp(&b.started_at).then(a.turn_number.cmp(&b.turn_number)));
+        self.turns.sort_by(|a, b| {
+            a.started_at
+                .cmp(&b.started_at)
+                .then(a.turn_number.cmp(&b.turn_number))
+        });
         self.rebuild_aggregates();
     }
 

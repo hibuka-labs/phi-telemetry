@@ -2,6 +2,32 @@
 
 All notable changes to phi-telemetry.
 
+## [0.7.0] — 2026-09-27
+
+### Added
+
+- `SessionMetrics::merge_turns` + merge-on-save: a second process working over
+  the same session (in-TUI `/resume`) extends the metrics instead of clobbering
+  them — turns dedupe on `(turn_number, started_at)`, aggregates rebuild from
+  the turn list, identity and custom fields are preserved, outcome follows the
+  current writer.
+
+### Changed
+
+- Bump `agent-base` to 0.8.0.
+
+## [0.6.0] — 2026-09-18
+
+### Changed
+
+- Bump `agent-base` to 0.7.0.
+
+## [0.5.0] — 2026-09-11
+
+### Changed
+
+- Bump `agent-base` to 0.6.0.
+
 ## [0.4.0] — 2026-09-06
 
 ### Added
