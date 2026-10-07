@@ -79,4 +79,4 @@ Report vulnerabilities to **phiagent@hibuka.com**. Do NOT open a public issue. S
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

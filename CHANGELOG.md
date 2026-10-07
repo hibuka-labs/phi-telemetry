@@ -2,6 +2,13 @@
 
 All notable changes to phi-telemetry.
 
+## [0.7.1] — 2026-10-07
+
+### Changed
+
+- Relicensed Apache-2.0 → MIT (family-wide license unification; `LICENSE`,
+  `Cargo.toml`, READMEs)
+
 ## [0.7.0] — 2026-09-27
 
 ### Added
