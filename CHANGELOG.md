@@ -2,6 +2,14 @@
 
 All notable changes to phi-telemetry.
 
+## [Unreleased]
+
+## [0.7.2] — 2026-10-18
+
+### Changed
+
+- Bump `agent-base` requirement to 0.10.0. No functional changes in this crate.
+
 ## [0.7.1] — 2026-10-07
 
 ### Changed
