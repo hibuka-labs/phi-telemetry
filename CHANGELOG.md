@@ -4,6 +4,13 @@ All notable changes to phi-telemetry.
 
 ## [Unreleased]
 
+## [0.7.3] — 2026-10-24
+
+### Changed
+
+- Bump `agent-base` requirement to 0.11.0 (per-call timeout budget,
+  awaiting-human park). No functional changes in this crate.
+
 ## [0.7.2] — 2026-10-18
 
 ### Changed
