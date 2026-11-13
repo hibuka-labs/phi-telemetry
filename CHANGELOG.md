@@ -4,6 +4,15 @@ All notable changes to phi-telemetry.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-14
+
+### Changed
+- **Breaking (dependency):** `agent-base` requirement bumped from 0.13.0 to
+  0.14.0, keeping the framework on a single agent-base version alongside
+  phi-agent 0.22.0. No functional changes in phi-telemetry itself.
+
+
+
 ## [0.7.5] - 2026-11-09
 
 ### Changed
