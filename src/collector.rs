@@ -277,6 +277,7 @@ mod tests {
                 completion_tokens: Some(300),
                 total_tokens: Some(800),
                 reasoning_tokens: None,
+                cache_read_tokens: None,
             }),
             full_text_len: 1024,
             has_thinking: false,
@@ -387,6 +388,7 @@ mod tests {
             completion_tokens: None,
             total_tokens: None,
             reasoning_tokens: None,
+            cache_read_tokens: None,
         });
         let turn = build_turn_metrics(&ctx);
         assert_eq!(turn.input_tokens, 100);
