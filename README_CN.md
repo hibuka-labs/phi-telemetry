@@ -77,4 +77,4 @@ phi metrics last      # 最近一个 session
 
 ## 许可
 
-MIT — 见 [LICENSE](LICENSE)。
+MIT OR Apache-2.0 — 见 [LICENSE-MIT](LICENSE-MIT) 与 [LICENSE-APACHE](LICENSE-APACHE)。
