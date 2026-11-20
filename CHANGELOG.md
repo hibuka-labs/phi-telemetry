@@ -4,6 +4,23 @@ All notable changes to phi-telemetry.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-20
+
+### Added
+- **A session's silent absorptions are countable after the fact.** The
+  engine's turn-end context now carries `silent_retries` and
+  `integrity_failures`, and they ride the custom map — the extension point
+  the product already uses for its own counters. They are session-lifetime
+  running totals, so the last turn's value is the session's total.
+
+### Changed
+- **Breaking (dependency):** `agent-base` requirement bumped from 0.15.0 to
+  0.16.0, keeping the framework on a single agent-base version alongside
+  phi-agent 0.24.0.
+
+### License
+- **Dual-licensed as MIT OR Apache-2.0.**
+
 ## [0.9.0] - 2026-11-16
 
 ### Changed
