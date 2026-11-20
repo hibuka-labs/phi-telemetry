@@ -4,7 +4,7 @@
 //! panics never affect the agent runtime.
 
 use agent_base::TurnContext;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
@@ -208,6 +208,15 @@ pub(crate) fn build_turn_metrics(ctx: &TurnContext) -> TurnMetrics {
     if let Some(ref msg) = ctx.error_message {
         turn.error_message = Some(msg.clone());
     }
+    // Stream-integrity counters ride the custom map (the extension point the
+    // product already uses for its own counters). They are session-lifetime
+    // running totals, so the last turn's value is the session's total — the
+    // question "how many corrupt rounds did this session absorb?" is
+    // answerable from session_metrics.json alone.
+    turn.custom = json!({
+        "silent_retries": ctx.silent_retries,
+        "integrity_failures": ctx.integrity_failures,
+    });
 
     turn
 }
@@ -293,10 +302,24 @@ mod tests {
             plan_updates: 0,
             approval_count: 0,
             llm_calls: 1,
+            silent_retries: 0,
+            integrity_failures: 0,
         }
     }
 
     // ── build_turn_metrics ──
+
+    /// The integrity counters reach the session metrics (custom map) so a
+    /// session's silent absorptions are countable after the fact.
+    #[test]
+    fn build_turn_metrics_carries_integrity_counters() {
+        let mut ctx = make_ctx(1, RunOutcome::Completed, vec![]);
+        ctx.silent_retries = 2;
+        ctx.integrity_failures = 3;
+        let turn = build_turn_metrics(&ctx);
+        assert_eq!(turn.custom["silent_retries"], serde_json::json!(2));
+        assert_eq!(turn.custom["integrity_failures"], serde_json::json!(3));
+    }
 
     #[test]
     fn build_turn_metrics_basic() {
